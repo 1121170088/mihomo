@@ -36,6 +36,10 @@ const (
 	AND
 	OR
 	NOT
+	RECORD
+	FileDI
+	MustResolve
+	ISOEmpty
 )
 
 type RuleType int
@@ -110,6 +114,14 @@ func (rt RuleType) String() string {
 		return "OR"
 	case NOT:
 		return "NOT"
+	case RECORD:
+		return "RECORD"
+	case FileDI:
+		return "FileDI"
+	case MustResolve:
+		return "MustResolve"
+	case ISOEmpty:
+		return "ISOEmpty"
 	default:
 		return "Unknown"
 	}
