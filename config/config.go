@@ -451,9 +451,8 @@ func Parse(buf []byte) (*Config, error) {
 	return ParseRawConfig(rawCfg)
 }
 
-func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
-	// config with default value
-	rawCfg := &RawConfig{
+func DefaultRawConfig() *RawConfig {
+	return &RawConfig{
 		AllowLan:          false,
 		BindAddress:       "*",
 		LanAllowedIPs:     []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
@@ -568,6 +567,11 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 			Port: 0,
 		},
 	}
+}
+
+func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
+	// config with default value
+	rawCfg := DefaultRawConfig()
 
 	if err := yaml.Unmarshal(buf, rawCfg); err != nil {
 		return nil, err

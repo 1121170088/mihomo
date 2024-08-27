@@ -102,6 +102,7 @@ func ApplyConfig(cfg *config.Config, force bool) {
 
 	updateDNS(cfg.DNS, cfg.General.IPv6)
 	updateListeners(cfg.General, cfg.Listeners, force, cfg.WanInput)
+	updateTun(cfg.General) // tun should not care "force"
 
 	updateIPTables(cfg)
 	updateTunnels(cfg.Tunnels)
@@ -201,11 +202,14 @@ func updateListeners(general *config.General, listeners map[string]C.InboundList
 	listener.ReCreateShadowSocks(general.ShadowSocksConfig, tunnel.Tunnel)
 	listener.ReCreateVmess(general.VmessConfig, tunnel.Tunnel)
 	listener.ReCreateTuic(general.TuicServer, tunnel.Tunnel)
-	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
 
 	if wanInput.Port != 0 {
 		listener.ReCreateMixedTls(wanInput, tunnel.Tunnel)
 	}
+}
+
+func updateTun(general *config.General) {
+	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
 }
 
 func updateExperimental(c *config.Experimental) {

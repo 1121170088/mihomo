@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"github.com/metacubex/mihomo/adapter/inbound"
+	authStore "github.com/metacubex/mihomo/listener/auth"
 	"github.com/metacubex/mihomo/listener/socks"
 	"net"
 	"strconv"
@@ -124,7 +125,7 @@ func handleConnTls(conn net.Conn, tlsProxy *inbound.TLSProxy, tunnel C.Tunnel) {
 		return
 	}
 	if head[0] == socks5.Version {
-		socks.HandleSocks5(myConn, tunnel)
+		socks.HandleSocks5(myConn, tunnel, authStore.Authenticator)
 	} else {
 		defer myConn.Close()
 
