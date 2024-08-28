@@ -2,7 +2,8 @@ package domain
 
 import (
 	"reflect"
-	"slices"
+	/*"slices"*/
+	"golang.org/x/exp/slices"
 	"unsafe"
 
 	"github.com/openacid/low/bitmap"
