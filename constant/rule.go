@@ -27,8 +27,6 @@ const (
 	ProcessNameRegex
 	ProcessPathRegex
 	RuleSet
-	DomainSet
-	IpCidrSet
 	Network
 	Uid
 	SubRules
@@ -96,10 +94,6 @@ func (rt RuleType) String() string {
 		return "Match"
 	case RuleSet:
 		return "RuleSet"
-	case DomainSet:
-		return "DomainSet"
-	case IpCidrSet:
-		return "IpCidrSet"
 	case Network:
 		return "Network"
 	case DSCP:
