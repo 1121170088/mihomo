@@ -17,7 +17,9 @@ import (
 	"github.com/metacubex/mihomo/adapter/inbound"
 	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
+	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/constant/features"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 
@@ -30,10 +32,11 @@ import (
 )
 
 var (
-	serverSecret = ""
-	serverAddr   = ""
-
 	uiPath = ""
+
+	httpServer *http.Server
+	tlsServer  *http.Server
+	unixServer *http.Server
 )
 
 type Traffic struct {
@@ -46,11 +49,33 @@ type Memory struct {
 	OSLimit uint64 `json:"oslimit"` // maybe we need it in the future
 }
 
+func ApplyConfig(cfg *config.Config) {
+	if features.CMFA && strings.HasSuffix(cfg.Controller.ExternalController, ":0") {
+		// CMFA have set its default override value to end with ":0" for security.
+		// so we direct return at here
+		return
+	}
+
+	if cfg.Controller.ExternalUI != "" {
+		SetUIPath(cfg.Controller.ExternalUI)
+	}
+
+	if cfg.Controller.ExternalController != "" {
+		go Start(cfg.Controller.ExternalController, cfg.Controller.ExternalControllerTLS,
+			cfg.Controller.Secret, cfg.TLS.Certificate, cfg.TLS.PrivateKey, cfg.Controller.ExternalDohServer,
+			cfg.General.LogLevel == log.DEBUG)
+	}
+
+	if cfg.Controller.ExternalControllerUnix != "" {
+		go StartUnix(cfg.Controller.ExternalControllerUnix, cfg.Controller.ExternalDohServer, cfg.General.LogLevel == log.DEBUG)
+	}
+}
+
 func SetUIPath(path string) {
 	uiPath = C.Path.Resolve(path)
 }
 
-func router(isDebug bool, withAuth bool, dohServer string) *chi.Mux {
+func router(isDebug bool, secret string, dohServer string) *chi.Mux {
 	r := chi.NewRouter()
 	corsM := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
@@ -72,8 +97,8 @@ func router(isDebug bool, withAuth bool, dohServer string) *chi.Mux {
 		}())
 	}
 	r.Group(func(r chi.Router) {
-		if withAuth {
-			r.Use(authentication)
+		if secret != "" {
+			r.Use(authentication(secret))
 		}
 		r.Get("/", hello)
 		r.Get("/logs", getLogs)
@@ -113,13 +138,18 @@ func router(isDebug bool, withAuth bool, dohServer string) *chi.Mux {
 
 func Start(addr string, tlsAddr string, secret string,
 	certificate, privateKey string, dohServer string, isDebug bool) {
-	if serverAddr != "" {
-		return
+	// first stop existing server
+	if httpServer != nil {
+		_ = httpServer.Close()
+		httpServer = nil
 	}
 
-	serverAddr = addr
-	serverSecret = secret
+	if tlsServer != nil {
+		_ = tlsServer.Close()
+		tlsServer = nil
+	}
 
+	// handle tlsAddr
 	if len(tlsAddr) > 0 {
 		go func() {
 			c, err := CN.ParseCert(certificate, privateKey, C.Path)
@@ -134,35 +164,46 @@ func Start(addr string, tlsAddr string, secret string,
 				return
 			}
 
-			serverAddr = l.Addr().String()
-			log.Infoln("RESTful API tls listening at: %s", serverAddr)
-			tlsServe := &http.Server{
-				Handler: router(isDebug, true, dohServer),
+			log.Infoln("RESTful API tls listening at: %s", l.Addr().String())
+			server := &http.Server{
+				Handler: router(isDebug, secret, dohServer),
 				TLSConfig: &tls.Config{
 					Certificates: []tls.Certificate{c},
 				},
 			}
-			if err = tlsServe.ServeTLS(l, "", ""); err != nil {
+			if err = server.ServeTLS(l, "", ""); err != nil {
 				log.Errorln("External controller tls serve error: %s", err)
 			}
+			tlsServer = server
 		}()
 	}
 
+	// handle addr
 	l, err := inbound.Listen("tcp", addr)
 	if err != nil {
 		log.Errorln("External controller listen error: %s", err)
 		return
 	}
-	serverAddr = l.Addr().String()
-	log.Infoln("RESTful API listening at: %s", serverAddr)
+	log.Infoln("RESTful API listening at: %s", l.Addr().String())
 
-	if err = http.Serve(l, router(isDebug, true, dohServer)); err != nil {
+	server := &http.Server{
+		Handler: router(isDebug, secret, dohServer),
+	}
+	if err = server.Serve(l); err != nil {
 		log.Errorln("External controller serve error: %s", err)
 	}
+	httpServer = server
 
 }
 
 func StartUnix(addr string, dohServer string, isDebug bool) {
+	// first stop existing server
+	if unixServer != nil {
+		_ = unixServer.Close()
+		unixServer = nil
+	}
+
+	// handle addr
 	addr = C.Path.Resolve(addr)
 
 	dir := filepath.Dir(addr)
@@ -187,12 +228,15 @@ func StartUnix(addr string, dohServer string, isDebug bool) {
 		log.Errorln("External controller unix listen error: %s", err)
 		return
 	}
-	serverAddr = l.Addr().String()
-	log.Infoln("RESTful API unix listening at: %s", serverAddr)
+	log.Infoln("RESTful API unix listening at: %s", l.Addr().String())
 
-	if err = http.Serve(l, router(isDebug, false, dohServer)); err != nil {
+	server := &http.Server{
+		Handler: router(isDebug, "", dohServer),
+	}
+	if err = server.Serve(l); err != nil {
 		log.Errorln("External controller unix serve error: %s", err)
 	}
+	unixServer = server
 }
 
 func setPrivateNetworkAccess(next http.Handler) http.Handler {
@@ -210,38 +254,35 @@ func safeEuqal(a, b string) bool {
 	return subtle.ConstantTimeCompare(aBuf, bBuf) == 1
 }
 
-func authentication(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		if serverSecret == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
+func authentication(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			// Browser websocket not support custom header
+			if r.Header.Get("Upgrade") == "websocket" && r.URL.Query().Get("token") != "" {
+				token := r.URL.Query().Get("token")
+				if !safeEuqal(token, secret) {
+					render.Status(r, http.StatusUnauthorized)
+					render.JSON(w, r, ErrUnauthorized)
+					return
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
 
-		// Browser websocket not support custom header
-		if r.Header.Get("Upgrade") == "websocket" && r.URL.Query().Get("token") != "" {
-			token := r.URL.Query().Get("token")
-			if !safeEuqal(token, serverSecret) {
+			header := r.Header.Get("Authorization")
+			bearer, token, found := strings.Cut(header, " ")
+
+			hasInvalidHeader := bearer != "Bearer"
+			hasInvalidSecret := !found || !safeEuqal(token, secret)
+			if hasInvalidHeader || hasInvalidSecret {
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, ErrUnauthorized)
 				return
 			}
 			next.ServeHTTP(w, r)
-			return
 		}
-
-		header := r.Header.Get("Authorization")
-		bearer, token, found := strings.Cut(header, " ")
-
-		hasInvalidHeader := bearer != "Bearer"
-		hasInvalidSecret := !found || !safeEuqal(token, serverSecret)
-		if hasInvalidHeader || hasInvalidSecret {
-			render.Status(r, http.StatusUnauthorized)
-			render.JSON(w, r, ErrUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
+		return http.HandlerFunc(fn)
 	}
-	return http.HandlerFunc(fn)
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
