@@ -64,10 +64,10 @@ func NewTls(addr string, wanInput *inbound.WanInput, tunnel C.Tunnel) (*Listener
 				}
 				continue
 			}
-			tcpcon, ok := c.(*proxyproto.Conn).TCPConn()
-			if ok {
-				N.TCPKeepAlive(tcpcon)
-			}
+			//tcpcon, ok := c.(*proxyproto.Conn).TCPConn()
+			//if ok {
+			//	N.TCPKeepAlive(tcpcon)
+			//}
 
 			myConn := NewMyConn(c)
 			head, err := myConn.Peek(4)

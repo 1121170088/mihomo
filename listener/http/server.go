@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/auth"
 	C "github.com/metacubex/mihomo/constant"
 	authStore "github.com/metacubex/mihomo/listener/auth"
@@ -57,6 +56,7 @@ func NewWithAuthenticator(addr string, tunnel C.Tunnel, getAuth func() auth.Auth
 			inbound.WithSpecialRules(""),
 		}
 	}
+
 	l, err := inbound.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,6 @@ func NewWithAuthenticator(addr string, tunnel C.Tunnel, getAuth func() auth.Auth
 				}
 				continue
 			}
-			N.TCPKeepAlive(conn)
 
 			getAuth := getAuth
 			if isDefault { // only apply on default listener
