@@ -6,8 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	S "github.com/kardianos/service"
-	cs "github.com/metacubex/mihomo/service"
 	"net"
 	"net/http"
 	"os"
@@ -27,10 +25,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 	"github.com/go-chi/render"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	S "github.com/kardianos/service"
+	cs "github.com/metacubex/mihomo/service"
+	"github.com/sagernet/cors"
 )
 
 var (
@@ -62,6 +62,22 @@ type Config struct {
 	PrivateKey  string
 	DohServer   string
 	IsDebug     bool
+	Cors        Cors
+}
+
+type Cors struct {
+	AllowOrigins        []string
+	AllowPrivateNetwork bool
+}
+
+func (c Cors) Apply(r chi.Router) {
+	r.Use(cors.New(cors.Options{
+		AllowedOrigins:      c.AllowOrigins,
+		AllowedMethods:      []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders:      []string{"Content-Type", "Authorization"},
+		AllowPrivateNetwork: c.AllowPrivateNetwork,
+		MaxAge:              300,
+	}).Handler)
 }
 
 func ReCreateServer(cfg *Config) {
@@ -77,17 +93,10 @@ func SetUIPath(path string) {
 	uiPath = C.Path.Resolve(path)
 }
 
-func router(isDebug bool, secret string, dohServer string) *chi.Mux {
+func router(isDebug bool, secret string, dohServer string, cors Cors) *chi.Mux {
 	isDebug = true
 	r := chi.NewRouter()
-	corsM := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders: []string{"Content-Type", "Authorization"},
-		MaxAge:         300,
-	})
-	r.Use(setPrivateNetworkAccess)
-	r.Use(corsM.Handler)
+	cors.Apply(r)
 	if isDebug {
 		r.Mount("/debug", func() http.Handler {
 			r := chi.NewRouter()
@@ -157,7 +166,7 @@ func start(cfg *Config) {
 		log.Infoln("RESTful API listening at: %s", l.Addr().String())
 
 		server := &http.Server{
-			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer),
+			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer, cfg.Cors),
 		}
 		httpServer = server
 		if err = server.Serve(l); err != nil {
@@ -189,7 +198,7 @@ func startTLS(cfg *Config) {
 
 		log.Infoln("RESTful API tls listening at: %s", l.Addr().String())
 		server := &http.Server{
-			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer),
+			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer, cfg.Cors),
 			TLSConfig: &tls.Config{
 				Certificates: []tls.Certificate{c},
 			},
@@ -238,7 +247,7 @@ func startUnix(cfg *Config) {
 		log.Infoln("RESTful API unix listening at: %s", l.Addr().String())
 
 		server := &http.Server{
-			Handler: router(cfg.IsDebug, "", cfg.DohServer),
+			Handler: router(cfg.IsDebug, "", cfg.DohServer, cfg.Cors),
 		}
 		unixServer = server
 		if err = server.Serve(l); err != nil {
@@ -269,22 +278,13 @@ func startPipe(cfg *Config) {
 		log.Infoln("RESTful API pipe listening at: %s", l.Addr().String())
 
 		server := &http.Server{
-			Handler: router(cfg.IsDebug, "", cfg.DohServer),
+			Handler: router(cfg.IsDebug, "", cfg.DohServer, cfg.Cors),
 		}
 		pipeServer = server
 		if err = server.Serve(l); err != nil {
 			log.Errorln("External controller pipe serve error: %s", err)
 		}
 	}
-}
-
-func setPrivateNetworkAccess(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
-			w.Header().Add("Access-Control-Allow-Private-Network", "true")
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func safeEuqal(a, b string) bool {

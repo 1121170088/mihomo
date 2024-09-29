@@ -109,6 +109,12 @@ type Controller struct {
 	ExternalUI             string
 	ExternalDohServer      string
 	Secret                 string
+	Cors                   Cors
+}
+
+type Cors struct {
+	AllowOrigins        []string
+	AllowPrivateNetwork bool
 }
 
 // Experimental config
@@ -193,6 +199,11 @@ type Config struct {
 	TLS           *TLS
 
 	WanInput *inbound.WanInput
+}
+
+type RawCors struct {
+	AllowOrigins        []string `yaml:"allow-origins" json:"allow-origins"`
+	AllowPrivateNetwork bool     `yaml:"allow-private-network" json:"allow-private-network"`
 }
 
 type RawDNS struct {
@@ -381,6 +392,7 @@ type RawConfig struct {
 	ExternalControllerPipe  string            `yaml:"external-controller-pipe" json:"external-controller-pipe"`
 	ExternalControllerUnix  string            `yaml:"external-controller-unix" json:"external-controller-unix"`
 	ExternalControllerTLS   string            `yaml:"external-controller-tls" json:"external-controller-tls"`
+	ExternalControllerCors  RawCors           `yaml:"external-controller-cors" json:"external-controller-cors"`
 	ExternalUI              string            `yaml:"external-ui" json:"external-ui"`
 	ExternalUIURL           string            `yaml:"external-ui-url" json:"external-ui-url"`
 	ExternalUIName          string            `yaml:"external-ui-name" json:"external-ui-name"`
@@ -564,6 +576,10 @@ func DefaultRawConfig() *RawConfig {
 
 		WanInput: inbound.WanInput{
 			Port: 0,
+		},
+		ExternalControllerCors: RawCors{
+			AllowOrigins:        []string{"*"},
+			AllowPrivateNetwork: true,
 		},
 	}
 }
@@ -802,6 +818,10 @@ func parseController(cfg *RawConfig) (*Controller, error) {
 		ExternalControllerUnix: cfg.ExternalControllerUnix,
 		ExternalControllerTLS:  cfg.ExternalControllerTLS,
 		ExternalDohServer:      cfg.ExternalDohServer,
+		Cors: Cors{
+			AllowOrigins:        cfg.ExternalControllerCors.AllowOrigins,
+			AllowPrivateNetwork: cfg.ExternalControllerCors.AllowPrivateNetwork,
+		},
 	}, nil
 }
 

@@ -9,7 +9,6 @@ require (
 	github.com/dlclark/regexp2 v1.11.4
 	github.com/gliderlabs/ssh v0.3.7
 	github.com/go-chi/chi/v5 v5.1.0
-	github.com/go-chi/cors v1.2.1
 	github.com/go-chi/render v1.0.3
 	github.com/go-co-op/gocron v1.37.0
 	github.com/gobwas/ws v1.4.0
@@ -42,6 +41,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/pires/go-proxyproto v0.7.0
 	github.com/puzpuzpuz/xsync/v3 v3.4.0
+	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/fswatch v0.1.1
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
 	github.com/sagernet/sing v0.5.0-alpha.13
