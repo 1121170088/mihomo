@@ -30,9 +30,11 @@ var (
 func configRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", getConfigs)
-	r.Put("/", updateConfigs)
-	r.Post("/geo", updateGeoDatabases)
-	r.Patch("/", patchConfigs)
+	if !embedMode { // disallow update/patch configs in embed mode
+		r.Put("/", updateConfigs)
+		r.Post("/geo", updateGeoDatabases)
+		r.Patch("/", patchConfigs)
+	}
 	return r
 }
 

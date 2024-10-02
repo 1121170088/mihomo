@@ -1,29 +1,27 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"github.com/metacubex/mihomo/component/updater"
-	"github.com/metacubex/mihomo/hub"
-	"os"
-	"os/signal"
-	"runtime"
-	"runtime/debug"
-	"strings"
-	"syscall"
-	"time"
-	"unsafe"
-
 	"github.com/metacubex/mihomo/component/geodata"
+	"github.com/metacubex/mihomo/component/updater"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/constant/features"
+	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/rules/provider"
-
 	cs "github.com/metacubex/mihomo/service"
 	"go.uber.org/automaxprocs/maxprocs"
+	"net"
+	"os"
+	"os/signal"
+	"runtime"
+	"strings"
+	"syscall"
+	"unsafe"
 )
 
 var (
@@ -68,6 +66,12 @@ func init() {
 func main() {
 	a := 1
 	log.Infoln("ptr size %d", unsafe.Sizeof(&a))
+	// Defensive programming: panic when code mistakenly calls net.DefaultResolver
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		panic("should never be called")
+	}
+
 	_, _ = maxprocs.Set(maxprocs.Logger(func(string, ...any) {}))
 
 	if len(os.Args) > 1 && os.Args[1] == "convert-ruleset" {
@@ -151,7 +155,6 @@ func run() {
 	}
 
 	defer executor.Shutdown()
-	memoryUsage()
 	termSign := make(chan os.Signal, 1)
 	hupSign := make(chan os.Signal, 1)
 	signal.Notify(termSign, syscall.SIGINT, syscall.SIGTERM)
@@ -166,29 +169,4 @@ func run() {
 			}
 		}
 	}
-}
-
-// memoryUsage implements a couple of not really beautiful hacks which purpose is to
-// make OS reclaim the memory freed by AdGuard Home as soon as possible.
-func memoryUsage() {
-	debug.SetGCPercent(10)
-
-	// madvdontneed: setting madvdontneed=1 will use MADV_DONTNEED
-	// instead of MADV_FREE on Linux when returning memory to the
-	// kernel. This is less efficient, but causes RSS numbers to drop
-	// more quickly.
-	_ = os.Setenv("GODEBUG", "madvdontneed=1")
-
-	// periodically call "debug.FreeOSMemory" so
-	// that the OS could reclaim the free memory
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		for {
-			select {
-			case t := <-ticker.C:
-				t.Second()
-				debug.FreeOSMemory()
-			}
-		}
-	}()
 }
